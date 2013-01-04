@@ -1,26 +1,17 @@
 script(src = '/javascript/candybar.js')
 link(rel="stylesheet", href="/stylesheets/candybar.css")
+script(src = '/javascript/dialpad.js')
+link(rel="stylesheet", href="/stylesheets/dialpad.css")
 
 #skelPage(data-role='page', data-theme='a')
   include header.jade
           
   div(data-role='content')
-    h2 Still Under Construction...
+    h2 Welcome to Candy Bar Node!
     p
       | Your phone number is 
       span#selfnumber
-    h2#status Loading...
-    | Enter Phone Number:
-    input#remote_number(type='text', value='')
-    input#call(type='button', disabled='true', value='Call...')
-    input#answer(type='button', disabled='true', value='Answer...')
-    input#reject(type='button', disabled='true', value='Reject...')
-    input#hangup(type='button', disabled='true', value='End Call...')
-    input#hold(type='button', disabled='true', value='Place on Hold...')
-    input#retrieve(type='button', disabled='true', value='Retrieve Call...')
-    | Transfer Number:
-    input#transfer_number(type='text')
-    input#transfer(type='button', disabled='true', value='Transfer...')
+    #dialer
 
   include footer.jade
 
@@ -37,65 +28,6 @@ script
   var att;
   var call;
 
-  function activateButton(sel, txt) {
-    if(txt) {
-      sel.val(txt);
-    }
-    sel.button("enable");
-    sel.button("refresh");
-  };
-
-  function deactivateButton(sel) {
-    sel.button("disable");
-    sel.button("refresh");
-  };
-
-  function toIdleState() {
-    activateButton($("#call"));
-    deactivateButton($("#answer"));
-    deactivateButton($("#reject"));
-    deactivateButton($("#hangup"));
-    deactivateButton($("#hold"));
-    deactivateButton($("#transfer"));
-    $("#status").html("Make a Call...");
-  }
-
-  function toCallingState() {
-    deactivateButton($("#call"));
-    activateButton($("#hangup"));
-    $("#status").html("Calling...");
-  }
-
-  function toRingingState() {
-    $("#status").html("Ringing...");
-  }
-
-  function toAnswerState(num) {
-    deactivateButton($("#call"));
-    activateButton($("#answer"));
-    activateButton($("#reject"));
-    if(!num) {
-      num = "Withheld";
-    }
-    $("#status").html("Answer Call: " + num + " ?");
-  }
-
-  function toSpeechState() {
-    activateButton($("#hangup"));
-    activateButton($("#hold"));
-    activateButton($("#transfer"));
-    deactivateButton($("#reject"));
-    deactivateButton($("#answer"));
-    $("#status").html("Active Call");
-  }
-
-  function toHoldState() {
-    deactivateButton($("#hangup"));
-    deactivateButton($("#hold"));
-    activateButton($("#retrieve"));
-    $("#status").html("Call on Hold...");
-  }
-
   $( '#skelPage' ).live( 'pageinit',function(event){
     console.log("pageinit ready");
     att = $.att({
@@ -106,7 +38,15 @@ script
         $("#selfnumber").html(selfNumber);
         var cb = new CandyBar({'phone' : att});
         cb.render();
-        toIdleState();
+        // init our dialpad
+        var dialpad = new Dialpad({
+          // when the "call" button is clicked
+          // on the dialer, dial our phone.
+          onCall: function (number, dialable) {
+            att.phone.dial(number);
+          }
+        });
+        $('#dialer').html(dialpad.render());
       },
       onUnready: function() {
         console.log("att disconnected...");
@@ -120,7 +60,6 @@ script
           call.bind({ 
             onHangup: function(event) { 
               console.log("Hangup Call...");
-              toIdleState();
             }, 
             onError: function(event) { 
               alert("Incoming call error:" + event); 
@@ -132,7 +71,6 @@ script
           if (match.length > 0)
             rNum = match[0];
           rNum = formatPhone(rNum);
-          toAnswerState(rNum);
         },
         onError: function(event) {
           console.log("Phone error: " + e.reason);
@@ -144,17 +82,13 @@ script
   $("#call").click(function(event) {
     
     var number = $("#remote_number").val();
-    toCallingState();
     call = att.phone.dial(number, {
       onRing: function() {
-        toRingingState();
       },
       onAnswer: function() {
-        toSpeechState();
       },
       onHangup: function() {
         console.log("Hangup Call...");
-        toIdleState();
       },
       onError: function() {
         console.log("Call Error");
@@ -165,38 +99,32 @@ script
   $("#answer").click(function(event) {
     console.log("Answer Call...");
     call.answer();
-    toSpeechState();
   });
 
   $("#reject").click(function(event) {
     console.log("Reject Call: " + call.id);
     call.hangup();
-    toIdleState();
   });
 
   $("#hangup").click(function(event) {
     console.log("Hangup Call...");
     call.hangup();
-    toIdleState();
   });
 
   $("#hold").click(function(event) {
     console.log("Hold Call...");
     call.hold(true);
-    toHoldState();
   });
 
   $("#retrieve").click(function(event) {
     console.log("Retrieve Call...");
     call.hold(false);
-    toSpeechState();
   });
 
   $("#transfer").click(function(event) {
     var number = $("#transfer_number").val();
     call.hold(true);
     call.transferto(number);
-    toIdleState();
   });
 
   $("#logout-btn").bind('click', function(e) {
