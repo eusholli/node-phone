@@ -247,41 +247,7 @@
         }
         return result;
     };
-    function Att(config) {
-        var self = this, 
-            options = config || {};
-        
-        // Make sure the version passed in is valid
-        if (['a1', 'a2', 'a3'].indexOf(options.version) === -1) {
-            options.version = 'a1';
-        }
-    
-        // always override with query param version, if set
-        options.version = _.getQueryParam('version') || options.version;
-        
-        // inherit wildemitter properties
-        WildEmitter.call(this);
-    
-        if (options.version === 'a1' || options.version === 'a2') {
-            $.getScript('/js/att.' + options.version + '.js', function () {
-                self.create(options);    
-            });    
-        } else {
-            $.getScript('/js/phono.06.js', function () {
-                options.token = options.apiKey;
-                options.apiKey = "7826110523f1241fcfd001859a67128d";
-                options.connectionUrl = "http://gw.att.io:8080/http-bind";
-                self.create(options);    
-            });
-        }
-    
-        return self;
-    }
-    
-    // set our prototype to be a new emitter instance
-    Att.prototype = new WildEmitter();
-    
-    Att.prototype.create = function (options) {
+    function Att(options) {
         var self = this,
             opts = options || {},
             config = this.config = {
@@ -290,7 +256,8 @@
                 jid: '',
                 log: true,
                 ringTone: '',
-                ringbackTone: ''
+                ringbackTone: '',
+                dependencyBaseUrl: '//js.att.io'
             },
             availableCallbacks = {
                 'onReady': 'ready',
@@ -315,6 +282,9 @@
                     return function () {};
                 }
             }();
+    
+        // inherit wildemitter properties
+        WildEmitter.call(this);
     
         // extend our defaults
         _.extend(this.config, opts);
@@ -347,7 +317,7 @@
         if (opts.phone) {
             _.each(phonoAPICallbacks, function (key, value) {
                 if (_.isFunc(self.config.phone[key])) {
-                    self.on(key, self.config.phone[key]);
+                    self.on(value, self.config.phone[key]);
                     self.config.phone[key] = function (event) {
                         self.emit(value, event);
                     };
@@ -361,7 +331,38 @@
             });
         }
     
-        if (this.config.version === 'a1') {
+        // attempt to get me and determine version
+        this.getMe(function (me) {
+            // make it possible to override guessed version
+            me.version = config.version || _.getQueryParam('version') || me.version;
+            config.version = me.version;
+    
+            self.emit('user', me);
+    
+            if (config.version === 'a1' || config.version === 'a2') {
+                $.getScript(config.dependencyBaseUrl + '/js/att.' + config.version + '.js', function () {
+                    self.fetchDependencies(config.version);    
+                });    
+            } else {
+                $.getScript(config.dependencyBaseUrl + '/js/phono.06.js', function () {
+                    config.token = config.apiKey;
+                    config.apiKey = "7826110523f1241fcfd001859a67128d";
+                    config.connectionUrl = "http://gw.att.io:8080/http-bind";
+                    self.fetchDependencies();    
+                });
+            }        
+        });
+    
+        return self;
+    }
+    
+    // set our prototype to be a new emitter instance
+    Att.prototype = new WildEmitter();
+    
+    Att.prototype.fetchDependencies = function (version) {
+        var self = this,
+            config = this.config;
+        if (version === 'a1') {
             if (!_.h2sSupport()) {
                 alert('Please use the special Ericsson build of Chromium. It can be downloaded from: http://js.att.io/browsers');
             } else {
@@ -373,10 +374,13 @@
                 this.phono = $.wcgphono(_.extend(config, {
                     phone: {
                         onIncomingCall: self._normalizeNonPhonoCallHandlers.bind(self)
+                    },
+                    onReady: function () {
+                        self.emit('ready');
                     }
                 }));
             }
-        } else if (this.config.version === 'a2') {
+        } else if (version === 'a2') {
             if (!_.h2sSupport()) {
                 alert('Please use the special Ericsson build of Chromium. It can be downloaded from: http://js.att.io/browsers');
             } else {
@@ -384,6 +388,9 @@
                 this.phono = $.h2sphono(_.extend(config, {
                     phone: {
                         onIncomingCall: self._normalizeNonPhonoCallHandlers.bind(self)
+                    },
+                    onReady: function () {
+                        self.emit('ready');
                     }
                 }));
             }
@@ -395,8 +402,8 @@
                 },
                 onReady: function () {
                     self.sessionId = this.sessionId;
-                    self.getMyNumber(function (number) {
-                        self.bindNumberToPhonoSession(number, self.sessionId, function () {
+                    self.getMe(function (me) {
+                        self.bindNumberToPhonoSession(me.number, self.sessionId, function () {
                             self.emit('ready'); 
                         });
                     });
@@ -405,16 +412,107 @@
         }
     };
     
-    Att.prototype.getMyNumber = function (cb) {
-        var self = this;
-        $.getJSON('https://auth.tfoundry.com/me.json?access_token=' + this.config.token, function (user) {
-            var number;
-            if (user) {
-                number = user.conference_phone_number || user.phone_number;
-                self.config.myNumber = number;
-                cb(number);
-            } else {
-                cb('');
+    Att.prototype.getMe = function (cb) {
+        var self = this,
+            baseUrl = "https://auth.tfoundry.com",
+            data = {
+                access_token: this.config.apiKey
+            },
+            version;
+    
+        // short circuit this if we've already done it
+        if (this.config.me) {
+            // the return is important for halting execution
+            return cb(this.config.me);
+        }
+    
+        // removes domain from number if exists
+        function cleanNumber(num) {
+            return num.split('@')[0];
+        }
+    
+        // we try to figure out what endpoint this user
+        // should be using based on a series of checks.
+        
+        console.log('this.config', this.config);
+    
+        console.log(data);
+    
+        // first we get the user object
+        $.ajax({
+            data: data,
+            dataType: 'json',
+            url: baseUrl + '/me.json',
+            success: function (user) {
+                // attempt to grab the external_id
+                var externalId = function () {
+                    var val;
+                    try {
+                        val = user.identifiers.external_id[0];
+                    } catch (e) {}
+                    return val;
+                }();
+    
+                // store the user in the config
+                self.config.me = user;
+                
+                // attempt to build an imsNumber
+                user.imsNumber = user.ims_phone_number || externalId;
+    
+                // if we have one, remove the domain.
+                if (user.imsNumber) {
+                    user.imsNumber = cleanNumber(user.imsNumber);
+                }
+    
+                // attempt to build a virtualNumber
+                user.virtualNumber = user.conference_phone_number;
+    
+                // if we have an explicit IMS number or an externalID
+                // then it's IMS
+                if (user.ims_phone_number || externalId) {
+                    version = 'a1';
+                } else if (user.conference_phone_number) {
+                    // if not and we've got a conference number
+                    // we want that as our number and we know we're likely
+                    // using a3/phono.
+                    version = 'a3';
+                }
+                // now we check to see if we've got a webrtc.json specified for this
+                // user.
+                $.ajax({
+                    data: data,
+                    dataType: 'json',
+                    url: baseUrl + '/users/' + user.uid + '/api_services/webrtc.json',
+                    // if we get a 200
+                    success: function (res) {
+                        // if we've got an explicit version use it.
+                        var explicitVersion = res && res.version;
+                        user.version = 'a' + explicitVersion;
+                        if (user.version === 'a3') {
+                            // use known phono number or main
+                            user.number = user.virtualNumber || user.phone_number;
+                        } else {
+                            // for 'a1' or 'a2' we should have an IMS number, if not
+                            // fallback to main phone.
+                            user.number = user.imsNumber || user.phone_number;                        
+                        }
+                        cb(user);
+                    }, 
+                    // handle the 404 case (which means we don't have an explicit ver.)
+                    error: function () {
+                        // keep any version we guessed from above or set to 'a3'
+                        user.version = version || 'a3';
+                        if (user.version === 'a3') {
+                            // use known phono number or main
+                            user.number = user.virtualNumber || user.phone_number;
+                        } else {
+                            // for 'a1' or 'a2' we should have an IMS number, if not
+                            // fallback to main phone.
+                            user.number = user.imsNumber || user.phone_number;
+                        }
+                        cb(user);
+                    }
+                });
             }
         });
     };
@@ -423,6 +521,7 @@
         // For A3, we need to bind the session id with the phone number
         $.ajax({
             url: 'http://binder.api.tfoundry.com/session/' + number + '/' + session,
+            //url: 'https://api.foundry.att.com/a3/webrtc/bind/' + number + '/' + session + "?access_token=" + this.config.token,
             type: "POST",
             success: function (data) {
                 cb();
@@ -449,6 +548,7 @@
             attCall = new AttCall(this, call);
             number = attCall.initiator || attCall._call.recipient || '';
             number = number.replace('tel:', '').replace('sip:', '');
+            number = number.split('@')[0];
             // silly fix to support phono API
             attCall.call = attCall;
             this.emit('incomingCall', attCall, att.phoneNumber.parse(number));
