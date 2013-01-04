@@ -33,6 +33,8 @@ script
 
   var att;
   var call;
+  var ringing = new Audio('telephone.ogg');
+  var ringTone = new Audio('ringtone.ogg');
 
   function activateButton(sel, txt) {
     if(txt) {
@@ -114,14 +116,18 @@ script
         // Event Handlers
         onIncomingCall: function(event) {
           call = event.call;
+          ringing.play();
           console.log("Incoming Call: " + call.id);
           call.bind({ 
             onHangup: function(event) { 
               console.log("Hangup Call...");
+              ringing.pause();
               toIdleState();
             }, 
             onError: function(event) { 
               alert("Incoming call error:" + event); 
+              ringing.pause();
+              toIdleState();
             }
           });
           // Prepare to answer the call
@@ -134,6 +140,8 @@ script
         },
         onError: function(event) {
           console.log("Phone error: " + e.reason);
+          ringing.pause();
+          toIdleState();
         }
       }
     });
@@ -144,31 +152,38 @@ script
     
     var number = $("#remote_number").val();
     toCallingState();
+    ringTone.play();
     call = att.phone.dial(number, {
       onRing: function() {
         toRingingState();
       },
       onAnswer: function() {
+        console.log("Call Answered...");
+        ringTone.pause();
         toSpeechState();
       },
       onHangup: function() {
         console.log("Hangup Call...");
+        ringTone.pause();
         toIdleState();
       },
       onError: function() {
         console.log("Call Error");
+        ringTone.pause();
       }
     });
   });
 
   $("#answer").click(function(event) {
     console.log("Answer Call...");
+    ringing.pause();
     call.answer();
     toSpeechState();
   });
 
   $("#reject").click(function(event) {
     console.log("Reject Call: " + call.id);
+    ringing.pause();
     call.hangup();
     toIdleState();
   });
