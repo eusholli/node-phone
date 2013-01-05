@@ -257,7 +257,7 @@
                 log: true,
                 ringTone: '',
                 ringbackTone: '',
-                dependencyBaseUrl: '//js.att.io'
+                dependencyBaseUrl: ''
             },
             availableCallbacks = {
                 'onReady': 'ready',
@@ -564,7 +564,7 @@
             attCall;
     
         this.emit('calling', phoneNumber);
-    
+        
         // for 'a3' we need to set a full sip address
         if (this.config.version === 'a3') {
             call = this.phono.phone.dial('sip:' + callable + '@12.208.176.26', {
@@ -579,7 +579,7 @@
     
         // FIXME: Short term fix, we auto-generate ring event - see FIXME in vendor/att.a1.js
         attCall.emit("ring");
-        
+            
         this.emit('outgoingCall', attCall);
         return attCall;
     };
@@ -614,6 +614,15 @@
             onHangup: function () {
                 self.emit('callEnd');
             },
+            onHold: function () {
+                self.emit('hold');
+            },
+            onRetrieve: function () {
+                self.emit('retrieve');
+            },
+            onWaiting: function () {
+                self.emit('waiting');
+            },
             onError: function () {
                 self.emit('error');
             }
@@ -632,6 +641,9 @@
                 'onRing': 'ring',
                 'onAnswer': 'callBegin',
                 'onHangup': 'callEnd',
+                'onHold': 'hold',
+                'onRetrieve': 'retrieve',
+                'onWaiting': 'waiting',
                 'onError': 'error'
             },
             options = callbacks || {},

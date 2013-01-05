@@ -196,12 +196,22 @@ script
 
   $("#hold").click(function(event) {
     console.log("Hold Call...");
+    call.bind({ 
+      onHold: function() { 
+        console.log("Call Held...");
+      } 
+    });
     call.hold(true);
     toHoldState();
   });
 
   $("#retrieve").click(function(event) {
     console.log("Retrieve Call...");
+    call.bind({ 
+      onHold: function() { 
+        console.log("Retrieve Held...");
+      } 
+    });
     call.hold(false);
     toSpeechState();
   });
@@ -209,9 +219,14 @@ script
   $("#transfer").click(function(event) {
     var tNumber = $("#transfer_number").val();
     call.hold(true);
-    setTimeout(function(){
-      call.transferto(tNumber);
-    }, 5000);
+    call.bind({ 
+      onHold: function(event) { 
+        console.log("Call Held...");
+        console.log("Transfer Call to: " + tNumber);
+        call.transferto(tNumber);
+        // toIdleState();
+      } 
+    });
   });
 
   $("#logout-btn").bind('click', function(e) {
