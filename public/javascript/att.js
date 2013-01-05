@@ -564,7 +564,7 @@
             attCall;
     
         this.emit('calling', phoneNumber);
-        
+    
         // for 'a3' we need to set a full sip address
         if (this.config.version === 'a3') {
             call = this.phono.phone.dial('sip:' + callable + '@12.208.176.26', {
@@ -616,6 +616,11 @@
             }
         });
     
+        // FIXME: Short term fix, we auto-generate answer - see FIXME in vendor/att.a1.js
+        if(_call.onRing) {
+          _call.onRing();
+        }
+        
         return this;
     }
     

@@ -152,9 +152,9 @@ script
     
     var number = $("#remote_number").val();
     toCallingState();
-    ringTone.play();
     call = att.phone.dial(number, {
       onRing: function() {
+        ringTone.play();
         toRingingState();
       },
       onAnswer: function() {
